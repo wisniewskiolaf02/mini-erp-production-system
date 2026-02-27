@@ -1,65 +1,65 @@
-
-
-WITH params AS (
-    SELECT
+WITH inputs AS (
+  SELECT
     1::int AS parent_material_id,
-    20::NUMERIC AS so_qty,
-    GREATEST(0, 20 - i.current_stock) AS shortage_to_meet_SO,
-    (i.current_stock - 20) AS stock_after_so_if_no_prod,
-    GREATEST(0, 20 + i.safety_stock - i.current_stock) AS planned_qty,
-    (i.current_stock + GREATEST(0, 20 + i.safety_stock - i.current_stock)) AS stock_after_prod_before_so,
-    (i.current_stock + GREATEST(0, 20 + i.safety_stock - i.current_stock)-20) AS stock_after_so
-    FROM inventory i
-    WHERE i.material_id = 1
+    20::numeric AS so_qty,
+    DATE '2026-03-10' AS as_of_date
+),
+params AS (
+  SELECT
+    inp.parent_material_id,
+    inp.so_qty,
+    inp.as_of_date,
+
+    GREATEST(0, inp.so_qty - inv_fg.current_stock) AS shortage_to_meet_so,
+    (inv_fg.current_stock - inp.so_qty) AS stock_after_so_if_no_prod,
+    GREATEST(0, inp.so_qty + inv_fg.safety_stock - inv_fg.current_stock) AS planned_qty,
+    (inv_fg.current_stock + GREATEST(0, inp.so_qty + inv_fg.safety_stock - inv_fg.current_stock)) AS stock_after_prod_before_so,
+    (inv_fg.current_stock + GREATEST(0, inp.so_qty + inv_fg.safety_stock - inv_fg.current_stock) - inp.so_qty) AS stock_after_so
+
+  FROM inputs inp
+  JOIN inventory inv_fg ON inv_fg.material_id = inp.parent_material_id
+),
+active_bom AS (
+  SELECT bh.parent_material_id, bh.bom_id, bh.valid_from
+  FROM bom_header bh
+  JOIN params p ON p.parent_material_id = bh.parent_material_id
+  WHERE bh.valid_from <= p.as_of_date
+  ORDER BY bh.valid_from DESC
+  LIMIT 1
 ),
 mrp AS (
-SELECT
-  p.material_name AS product,
-  c.material_name AS component,
-  bi.quantity AS req_per_bike,
-  bi.quantity * params.planned_qty AS req_for_plan,
-  cu.unit_code AS component_unit,
-  i.safety_stock,
-  i.current_stock,
-  i.current_stock - (bi.quantity * params.planned_qty) AS projected_stock,
+  SELECT
+    prod.material_name AS product,
+    comp.material_name AS component,
+    bi.quantity AS req_per_bike,
+    bi.quantity * p.planned_qty AS req_for_plan,
+    cu.unit_code AS component_unit,
 
-  (i.current_stock - (bi.quantity * params.planned_qty)) <  i.safety_stock AS below_safety,
-  (i.current_stock - (bi.quantity * params.planned_qty)) <= i.safety_stock AS below_or_at_safety,
-  (i.current_stock - (bi.quantity * params.planned_qty)) <  0              AS stockout,
-   
-   params.so_qty,
-   params.planned_qty,
-   params.shortage_to_meet_SO,
-   params.stock_after_so_if_no_prod,
-   params.stock_after_prod_before_so,
-   params.stock_after_so,
-   
-  CASE
-    WHEN (i.current_stock - (bi.quantity * params.planned_qty)) < 0
-      THEN -(i.current_stock - (bi.quantity * params.planned_qty))
-    ELSE 0
-  END AS shortage_to_0,
+    COALESCE(inv_comp.safety_stock, 0) AS safety_stock,
+    COALESCE(inv_comp.current_stock, 0) AS current_stock,
+    COALESCE(inv_comp.current_stock, 0) - (bi.quantity * p.planned_qty) AS projected_stock,
 
-  CASE
-    WHEN (i.current_stock - (bi.quantity * params.planned_qty)) < i.safety_stock
-      THEN i.safety_stock - (i.current_stock - (bi.quantity * params.planned_qty))
-    ELSE 0
-  END AS shortage_to_safety
+    (COALESCE(inv_comp.current_stock, 0) - (bi.quantity * p.planned_qty)) <= COALESCE(inv_comp.safety_stock, 0) AS below_or_at_safety,
+    (COALESCE(inv_comp.current_stock, 0) - (bi.quantity * p.planned_qty)) < 0 AS stockout,
 
-  
-FROM params
-JOIN materials p ON p.material_id = params.parent_material_id
-JOIN bom_header bh ON p.material_id = bh.parent_material_id
-JOIN bom_items bi ON bh.bom_id = bi.bom_id
-JOIN materials c ON bi.component_material_id = c.material_id
-JOIN units cu ON cu.unit_id = c.base_unit
-LEFT JOIN inventory i ON c.material_id = i.material_id
+    p.so_qty,
+    p.planned_qty,
+    p.shortage_to_meet_so,
+    p.stock_after_so_if_no_prod,
+    p.stock_after_prod_before_so,
+    p.stock_after_so,
+
+    GREATEST(0, (bi.quantity * p.planned_qty) - COALESCE(inv_comp.current_stock, 0)) AS shortage_to_0,
+    GREATEST(0, (bi.quantity * p.planned_qty) + COALESCE(inv_comp.safety_stock, 0) - COALESCE(inv_comp.current_stock, 0)) AS shortage_to_safety
+
+  FROM params p
+  JOIN materials prod ON prod.material_id = p.parent_material_id
+  JOIN active_bom ab ON TRUE
+  JOIN bom_items bi ON ab.bom_id = bi.bom_id
+  JOIN materials comp ON bi.component_material_id = comp.material_id
+  JOIN units cu ON cu.unit_id = comp.base_unit
+  LEFT JOIN inventory inv_comp ON inv_comp.material_id = comp.material_id
 )
 SELECT *
 FROM mrp
-
-WHERE stockout = true
-    OR below_or_at_safety = true   
-    OR shortage_to_safety > 0
-
 ORDER BY component;
