@@ -55,7 +55,7 @@ VALUES
 -- -----------------
 
 INSERT INTO bom_header (parent_material_id, valid_from)
-VALUES (1, CURRENT_DATE);
+VALUES (1, DATE '2026-02-17');
 
 INSERT INTO bom_items (bom_id, component_material_id, quantity)
 VALUES
