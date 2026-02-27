@@ -96,3 +96,37 @@ CREATE TABLE inventory (
     safety_stock  NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (safety_stock >= 0),
     reorder_point NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (reorder_point >= 0)
 );
+
+-- -----------------------------
+-- Constraints 
+-- -----------------------------
+
+ALTER TABLE bom_items
+ADD CONSTRAINT uq_bom_items_bom_component
+UNIQUE (bom_id, component_material_id);
+
+ALTER TABLE routings
+ADD CONSTRAINT uq_routings_material
+UNIQUE (material_id);
+
+ALTER TABLE bom_header
+ADD CONSTRAINT uq_bom_header_parent_valid_from
+UNIQUE (parent_material_id, valid_from);
+
+-- -----------------------------
+-- Indexes 
+-- -----------------------------
+
+CREATE INDEX IF NOT EXISTS idx_bom_items_bom_id
+ON bom_items (bom_id);
+
+CREATE INDEX IF NOT EXISTS idx_bom_items_component_material_id
+ON bom_items (component_material_id);
+
+CREATE INDEX IF NOT EXISTS idx_routing_operations_routing_id
+ON routing_operations (routing_id);
+
+CREATE INDEX IF NOT EXISTS idx_routing_operations_work_center_id
+ON routing_operations (work_center_id);
+
+-- CREATE INDEX IF NOT EXISTS idx_materials_type_id ON materials (type_id);
