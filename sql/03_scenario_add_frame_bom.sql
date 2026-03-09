@@ -70,3 +70,25 @@ JOIN materials m ON m.material_id = i.material_id
 WHERE material_code IN ('TUBE_001','WELD_WIRE_001')
 ORDER BY material_code;
 
+WITH ids AS(
+SELECT
+(SELECT material_id FROM materials WHERE material_code = 'FRAME_001') AS frame_id
+)
+    INSERT INTO bom_header (parent_material_id, valid_from)
+SELECT
+    frame_id,
+    DATE '2026-03-31'
+    FROM ids
+
+    ON CONFLICT (parent_material_id, valid_from) DO NOTHING
+
+    RETURNING bom_id, parent_material_id, valid_from;
+
+WITH ids AS (
+  SELECT
+    (SELECT material_id FROM materials WHERE material_code = 'FRAME_001') AS frame_id
+)
+SELECT bh.bom_id, bh.parent_material_id, bh.valid_from
+FROM bom_header bh
+JOIN ids i ON bh.parent_material_id = i.frame_id
+WHERE bh.valid_from = DATE '2026-03-31';
