@@ -92,3 +92,29 @@ SELECT bh.bom_id, bh.parent_material_id, bh.valid_from
 FROM bom_header bh
 JOIN ids i ON bh.parent_material_id = i.frame_id
 WHERE bh.valid_from = DATE '2026-03-31';
+
+WITH ids AS (
+  SELECT
+    (SELECT bom_id FROM bom_header WHERE parent_material_id = 2 AND valid_from = DATE '2026-03-31') AS frame_bom_id,
+    (SELECT material_id FROM materials WHERE material_code = 'TUBE_001') AS tube_id,
+    (SELECT material_id FROM materials WHERE material_code = 'WELD_WIRE_001') AS weld_wire_id
+)
+SELECT * FROM ids;
+
+WITH ids AS (
+  SELECT
+    (SELECT bom_id FROM bom_header WHERE parent_material_id = 2 AND valid_from = DATE '2026-03-31') AS frame_bom_id,
+    (SELECT material_id FROM materials WHERE material_code = 'TUBE_001') AS tube_id,
+    (SELECT material_id FROM materials WHERE material_code = 'WELD_WIRE_001') AS weld_wire_id
+)
+INSERT INTO bom_items (bom_id, component_material_id, quantity)
+SELECT frame_bom_id, tube_id, 2
+FROM ids
+
+UNION ALL
+
+SELECT frame_bom_id, weld_wire_id, 1
+FROM ids
+
+ON CONFLICT (bom_id, component_material_id) DO NOTHING;
+;
